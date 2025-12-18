@@ -123,8 +123,3 @@ You can deploy the app easily on **Streamlit Cloud**:
 **Leonard Niyitegeka**
 [GitHub](https://github.com/leonard250)
 
----
-
-## 📄 License
-
-MIT License © 2025 Leonard Niyitegeka
