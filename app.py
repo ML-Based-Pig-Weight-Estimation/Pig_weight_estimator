@@ -115,6 +115,40 @@ with tab1:
 with tab2:
     camera_img = st.camera_input("Capture a pig image")
     
+import streamlit as st
+
+st.markdown(
+    """
+    <style>
+    /* Tab container */
+    div[data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    /* Individual tabs */
+    button[data-baseweb="tab"] {
+        background-color: #f0f2f6;
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-weight: 500;
+        transition: all 0.2s ease-in-out;
+    }
+
+    /* Hover effect */
+    button[data-baseweb="tab"]:hover {
+        background-color: #4CAF50;
+        color: white;
+    }
+
+    /* Active tab */
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #2E7D32;
+        color: white;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 if uploaded_img is not None:
     pig_img = uploaded_img
