@@ -134,14 +134,19 @@ st.markdown(
 
     /* Hover effect */
     button[data-baseweb="tab"]:hover {
-        background-color: #000000;
         color: green;
     }
 
-    /* Active tab */
+     <style>
+    /* Active tab text color */
     button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: #000000;
         color: green;
+    }
+
+    /* Active tab indicator (the line underneath) */
+    div[data-baseweb="tab-highlight"] {
+        background-color: green;
+        height: 3px;
     }
     </style>
     """,
