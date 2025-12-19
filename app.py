@@ -135,13 +135,13 @@ st.markdown(
     /* Hover effect */
     button[data-baseweb="tab"]:hover {
         background-color: #000000;
-        color: white;
+        color: green;
     }
 
     /* Active tab */
     button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: #2E7D32;
-        color: white;
+        background-color: #000000;
+        color: green;
     }
     </style>
     """,
