@@ -16,7 +16,11 @@ st.set_page_config(
     page_icon="🐷",
     layout="wide"
 
+
 )
+st.write("Current directory:", os.getcwd())
+st.write("Files here:", os.listdir())
+st.write("Model exists?", os.path.exists(MODEL_PATH))
 st.markdown(
     """
     <style>
@@ -46,19 +50,19 @@ st.write("You can upload an image or take a photo using your device camera.")
 st.write("Please make sure the image clearly shows the entire body parts of the pig for accurate weight estimation.")
 
 # Hide Streamlit UI elements (optional)
-st.markdown(
-    """
-    <style>
-    header{visibility: hidden;}
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    ._terminalButton_rix23_138{visibility: hidde;}
-    </style>
+# st.markdown(
+#     """
+#     <style>
+#     header{visibility: hidden;}
+#     #MainMenu {visibility: hidden;}
+#     footer {visibility: hidden;}
+#     ._terminalButton_rix23_138{visibility: hidde;}
+#     </style>
 
 
-    """,
-    unsafe_allow_html=True
-)
+#     """,
+#     unsafe_allow_html=True
+# )
 
 # --- Sidebar ---
 st.sidebar.subheader("About the App")
