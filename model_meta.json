@@ -1,1 +1,1 @@
-{"features": ["SR", "elongation", "BL", "BW", "P", "hu1", "hu2", "hu3", "hu6", "compactness"], "best_iterations": 125, "random_state": 42}
+{"features": ["SR", "A", "cy", "cx", "P", "A_hull", "hu4", "elongation", "hu6", "aspect_ratio", "hu3", "compactness"], "best_iterations": 125, "random_state": 42}

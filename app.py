@@ -200,7 +200,7 @@ if pig_img is not None:
         status_text=st.empty()
     # loading the weights of the trained model weights and metadata
 
-    MODEL_PATH = "catboost_weight_model.cbm"
+    MODEL_PATH = "catboost_pruned_model.cbm"
     META_PATH = "model_meta.json"
 
     model = CatBoostRegressor()
@@ -329,71 +329,71 @@ def extract_features(mask_path):
 
 
 
-    img=load_image_from_streamlit(pig_img)
-    main_bar.progress(10)
-    status_text.text("10%")
-    final_mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    detect_results = yolo_detect.predict(
-        img,
+img=load_image_from_streamlit(pig_img)
+main_bar.progress(10)
+status_text.text("10%")
+final_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+detect_results = yolo_detect.predict(
+    img,
+        conf=0.3,
+        verbose=False,
+        device=device
+    )
+
+for result in detect_results:
+    boxes = result.boxes.xyxy.cpu().numpy() if result.boxes is not None else []
+    for bbox in boxes:
+        x1, y1, x2, y2 = map(int, bbox[:4])
+        crop = img[y1:y2, x1:x2]
+
+        seg_results = yolo_seg.predict(
+            crop,
             conf=0.3,
             verbose=False,
             device=device
         )
+        main_bar.progress(50)
+        status_text.text("50%")
+        for seg_res in seg_results:
+            if seg_res.masks is not None:
+                for mask in seg_res.masks.data:
+                    mask_array = mask.cpu().numpy().astype(np.uint8) * 255
+                    mask_resized = cv2.resize(mask_array, (x2 - x1, y2 - y1))
 
-    for result in detect_results:
-        boxes = result.boxes.xyxy.cpu().numpy() if result.boxes is not None else []
-        for bbox in boxes:
-            x1, y1, x2, y2 = map(int, bbox[:4])
-            crop = img[y1:y2, x1:x2]
+                    final_mask[y1:y2, x1:x2] = cv2.bitwise_or(
+                        final_mask[y1:y2, x1:x2],
+                        mask_resized
+                    )
 
-            seg_results = yolo_seg.predict(
-                crop,
-                conf=0.3,
-                verbose=False,
-                device=device
-            )
-            main_bar.progress(50)
-            status_text.text("50%")
-            for seg_res in seg_results:
-                if seg_res.masks is not None:
-                    for mask in seg_res.masks.data:
-                        mask_array = mask.cpu().numpy().astype(np.uint8) * 255
-                        mask_resized = cv2.resize(mask_array, (x2 - x1, y2 - y1))
+                    pig_only = cv2.bitwise_and(crop, crop, mask=mask_resized)
+                    
+main_bar.progress(75)
+status_text.text("75%")
 
-                        final_mask[y1:y2, x1:x2] = cv2.bitwise_or(
-                            final_mask[y1:y2, x1:x2],
-                            mask_resized
-                        )
+FEATURE_NAMES = [
+    "SR", "A", "P", "BL", "BW", "E",
+    "A_hull", "solidity", "extent",
+    "compactness", "circularity", "elongation",
+    "aspect_ratio",
+    "hu1", "hu2", "hu3", "hu4", "hu5", "hu6", "hu7", "countour length"
+]
 
-                        pig_only = cv2.bitwise_and(crop, crop, mask=mask_resized)
-                        
-    main_bar.progress(75)
-    status_text.text("75%")
+results = {name: [] for name in ["pig_id", "weight", "img_file"] + FEATURE_NAMES}
+count = 0
 
-    FEATURE_NAMES = [
-        "SR", "A", "P", "BL", "BW", "E",
-        "A_hull", "solidity", "extent",
-        "compactness", "circularity", "elongation",
-        "aspect_ratio",
-        "hu1", "hu2", "hu3", "hu4", "hu5", "hu6", "hu7", "countour length"
-    ]
+features = extract_features(final_mask)
+if not features:
+    st.error("Failed to extract features from the image. Please try another image.")
+else:
+    main_bar.progress(90)
+    status_text.text("90%")
 
-    results = {name: [] for name in ["pig_id", "weight", "img_file"] + FEATURE_NAMES}
-    count = 0
-
-    features = extract_features(final_mask)
-    if not features:
-        st.error("Failed to extract features from the image. Please try another image.")
-    else:
-        main_bar.progress(90)
-        status_text.text("90%")
-
-        feature_dict = {name: features[i] for i, name in enumerate(FEATURE_NAMES)}
-        feature_df = pd.DataFrame([feature_dict])
-        predicted_weight = model.predict(feature_df)[0]
-        main_bar.progress(100)
-        status_text.text("100%")
-        st.success(f"Predicted weight: **{predicted_weight:.2f} kg**")
+    feature_dict = {name: features[i] for i, name in enumerate(FEATURE_NAMES)}
+    feature_df = pd.DataFrame([feature_dict])
+    predicted_weight = model.predict(feature_df)[0]
+    main_bar.progress(100)
+    status_text.text("100%")
+    st.success(f"Predicted weight: **{predicted_weight:.2f} kg**")
 
 
 
