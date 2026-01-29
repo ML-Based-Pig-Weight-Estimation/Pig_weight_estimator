@@ -200,7 +200,7 @@ if pig_img is not None:
         status_text=st.empty()
     # loading the weights of the trained model weights and metadata
 
-    MODEL_PATH = "catboost_pruned_model.cbm"
+    MODEL_PATH = "catboost_weight_model.cbm"
     META_PATH = "model_meta.json"
 
     model = CatBoostRegressor()
@@ -237,165 +237,126 @@ if pig_img is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         return img
-    import cv2
-import numpy as np
+    def extract_features(mask):
+    
+        if mask is None:
+            return []
 
-def extract_features(mask_path):
-    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    if mask is None:
-        return []
+        _, mask_bin = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+        A = np.sum(mask_bin == 255)
+        SR = A / (mask.shape[0] * mask.shape[1])
 
-    # Binarize mask
-    _, mask_bin = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(contours) == 0:
+            return []
 
-    # Area & relative area
-    A = np.sum(mask_bin == 255)
-    SR = A / (mask.shape[0] * mask.shape[1])  # Shape ratio
+        cnt = contours[0]
 
-    # Find contours
-    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours) == 0:
-        return []
+        # ─── New Feature: Length of the contour ───────────────────────────
+        contour_length = len(cnt)
 
-    cnt = contours[0]
+        P = cv2.arcLength(cnt, True)
 
-    # Perimeter
-    P = cv2.arcLength(cnt, True)
+        rect = cv2.minAreaRect(cnt)
+        (_, _), (width, height), _ = rect
+        BL = max(width, height)
+        BW = min(width, height)
+        aspect_ratio = width / height if height > 0 else 0
 
-    # Minimum area rectangle
-    rect = cv2.minAreaRect(cnt)
-    (_, _), (width, height), _ = rect
-    BL = max(width, height)
-    BW = min(width, height)
-    aspect_ratio = width / height if height > 0 else 0
-    elongation = BL / BW if BW > 0 else 0
+        if len(cnt) >= 5:
+            ellipse = cv2.fitEllipse(cnt)
+            (_, axes, _) = ellipse
+            majoraxis = max(axes)
+            minoraxis = min(axes)
+            E = np.sqrt(1 - (minoraxis / majoraxis) ** 2)
+        else:
+            E = 0
 
-    # Fit ellipse eccentricity
-    if len(cnt) >= 5:
-        ellipse = cv2.fitEllipse(cnt)
-        (_, axes, _) = ellipse
-        majoraxis = max(axes)
-        minoraxis = min(axes)
-        E = np.sqrt(1 - (minoraxis / majoraxis) ** 2)
-    else:
-        E = 0
+        hull = cv2.convexHull(cnt)
+        A_hull = cv2.contourArea(hull)
+        solidity = A / A_hull if A_hull > 0 else 0
 
-    # Convex hull
-    hull = cv2.convexHull(cnt)
-    A_hull = cv2.contourArea(hull)
-    solidity = A / A_hull if A_hull > 0 else 0
+        x2, y2, w2, h2 = cv2.boundingRect(cnt)
+        rect_area = w2 * h2
+        extent = A / rect_area if rect_area > 0 else 0
 
-    # Bounding rect features
-    x2, y2, w2, h2 = cv2.boundingRect(cnt)
-    rect_area = w2 * h2
-    extent = A / rect_area if rect_area > 0 else 0
-    rectangularity = rect_area / A if A > 0 else 0
+        compactness = (P ** 2) / (4 * np.pi * A) if A > 0 else 0
+        circularity = (4 * np.pi * A) / (P ** 2) if P > 0 else 0
+        elongation = BL / BW if BW > 0 else 0
 
-    # Compactness & circularity
-    compactness = (P ** 2) / (4 * np.pi * A) if A > 0 else 0
-    circularity = (4 * np.pi * A) / (P ** 2) if P > 0 else 0
+        hu = cv2.HuMoments(cv2.moments(cnt)).flatten()
 
-    # Equivalent diameter
-    equiv_diameter = np.sqrt(4 * A / np.pi) if A > 0 else 0
-
-    # Convexity (perimeter ratio)
-    P_hull = cv2.arcLength(hull, True)
-    convexity = P_hull / P if P > 0 else 0
-
-    # Centroid
-    M = cv2.moments(cnt)
-    cx = M['m10'] / M['m00'] if M['m00'] != 0 else 0
-    cy = M['m01'] / M['m00'] if M['m00'] != 0 else 0
-
-    # Extreme points
-    top = tuple(cnt[cnt[:,:,1].argmin()][0])
-    bottom = tuple(cnt[cnt[:,:,1].argmax()][0])
-    left = tuple(cnt[cnt[:,:,0].argmin()][0])
-    right = tuple(cnt[cnt[:,:,0].argmax()][0])
-    height_span = bottom[1] - top[1]
-    width_span = right[0] - left[0]
-
-    # Hu Moments
-    hu = cv2.HuMoments(cv2.moments(cnt)).flatten()
-
-    return [
-        SR, A, P, BL, BW, E,
-        A_hull, solidity, extent,
-        compactness, circularity, elongation,
-        aspect_ratio, equiv_diameter, convexity, rectangularity,
-        cx, cy, height_span, width_span,
-        *hu
-    ]
+        return [
+            SR, A, P, BL, BW, E,
+            A_hull, solidity, extent,
+            compactness, circularity, elongation,
+            aspect_ratio,
+            *hu, contour_length
+        ]
 
 
-
-img=load_image_from_streamlit(pig_img)
-main_bar.progress(10)
-status_text.text("10%")
-final_mask = np.zeros(img.shape[:2], dtype=np.uint8)
-detect_results = yolo_detect.predict(
-    img,
-        conf=0.3,
-        verbose=False,
-        device=device
-    )
-
-for result in detect_results:
-    boxes = result.boxes.xyxy.cpu().numpy() if result.boxes is not None else []
-    for bbox in boxes:
-        x1, y1, x2, y2 = map(int, bbox[:4])
-        crop = img[y1:y2, x1:x2]
-
-        seg_results = yolo_seg.predict(
-            crop,
+    img=load_image_from_streamlit(pig_img)
+    main_bar.progress(10)
+    status_text.text("10%")
+    final_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    detect_results = yolo_detect.predict(
+        img,
             conf=0.3,
             verbose=False,
             device=device
         )
-        main_bar.progress(50)
-        status_text.text("50%")
-        for seg_res in seg_results:
-            if seg_res.masks is not None:
-                for mask in seg_res.masks.data:
-                    mask_array = mask.cpu().numpy().astype(np.uint8) * 255
-                    mask_resized = cv2.resize(mask_array, (x2 - x1, y2 - y1))
 
-                    final_mask[y1:y2, x1:x2] = cv2.bitwise_or(
-                        final_mask[y1:y2, x1:x2],
-                        mask_resized
-                    )
+    for result in detect_results:
+        boxes = result.boxes.xyxy.cpu().numpy() if result.boxes is not None else []
+        for bbox in boxes:
+            x1, y1, x2, y2 = map(int, bbox[:4])
+            crop = img[y1:y2, x1:x2]
 
-                    pig_only = cv2.bitwise_and(crop, crop, mask=mask_resized)
-                    
-main_bar.progress(75)
-status_text.text("75%")
+            seg_results = yolo_seg.predict(
+                crop,
+                conf=0.3,
+                verbose=False,
+                device=device
+            )
+            main_bar.progress(50)
+            status_text.text("50%")
+            for seg_res in seg_results:
+                if seg_res.masks is not None:
+                    for mask in seg_res.masks.data:
+                        mask_array = mask.cpu().numpy().astype(np.uint8) * 255
+                        mask_resized = cv2.resize(mask_array, (x2 - x1, y2 - y1))
 
-FEATURE_NAMES = [
-    "SR", "A", "P", "BL", "BW", "E",
-    "A_hull", "solidity", "extent",
-    "compactness", "circularity", "elongation",
-    "aspect_ratio",
-    "hu1", "hu2", "hu3", "hu4", "hu5", "hu6", "hu7", "countour length"
-]
+                        final_mask[y1:y2, x1:x2] = cv2.bitwise_or(
+                            final_mask[y1:y2, x1:x2],
+                            mask_resized
+                        )
 
-results = {name: [] for name in ["pig_id", "weight", "img_file"] + FEATURE_NAMES}
-count = 0
+                        pig_only = cv2.bitwise_and(crop, crop, mask=mask_resized)
+                        
+    main_bar.progress(75)
+    status_text.text("75%")
 
-features = extract_features(final_mask)
-if not features:
-    st.error("Failed to extract features from the image. Please try another image.")
-else:
-    main_bar.progress(90)
-    status_text.text("90%")
+    FEATURE_NAMES = [
+        "SR", "A", "P", "BL", "BW", "E",
+        "A_hull", "solidity", "extent",
+        "compactness", "circularity", "elongation",
+        "aspect_ratio",
+        "hu1", "hu2", "hu3", "hu4", "hu5", "hu6", "hu7", "countour length"
+    ]
 
-    feature_dict = {name: features[i] for i, name in enumerate(FEATURE_NAMES)}
-    feature_df = pd.DataFrame([feature_dict])
-    predicted_weight = model.predict(feature_df)[0]
-    main_bar.progress(100)
-    status_text.text("100%")
-    st.success(f"Predicted weight: **{predicted_weight:.2f} kg**")
+    results = {name: [] for name in ["pig_id", "weight", "img_file"] + FEATURE_NAMES}
+    count = 0
 
+    features = extract_features(final_mask)
+    if not features:
+        st.error("Failed to extract features from the image. Please try another image.")
+    else:
+        main_bar.progress(90)
+        status_text.text("90%")
 
-
-
-
+        feature_dict = {name: features[i] for i, name in enumerate(FEATURE_NAMES)}
+        feature_df = pd.DataFrame([feature_dict])
+        predicted_weight = model.predict(feature_df)[0]
+        main_bar.progress(100)
+        status_text.text("100%")
+        st.success(f"Predicted weight: **{predicted_weight:.2f} kg**")
