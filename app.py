@@ -237,62 +237,96 @@ if pig_img is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         return img
-    def extract_features(mask):
-    
-        if mask is None:
-            return []
+    import cv2
+import numpy as np
 
-        _, mask_bin = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-        A = np.sum(mask_bin == 255)
-        SR = A / (mask.shape[0] * mask.shape[1])
+def extract_features(mask_path):
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    if mask is None:
+        return []
 
-        contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(contours) == 0:
-            return []
+    # Binarize mask
+    _, mask_bin = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
 
-        cnt = contours[0]
+    # Area & relative area
+    A = np.sum(mask_bin == 255)
+    SR = A / (mask.shape[0] * mask.shape[1])  # Shape ratio
 
-        # ─── New Feature: Length of the contour ───────────────────────────
-        contour_length = len(cnt)
+    # Find contours
+    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if len(contours) == 0:
+        return []
 
-        P = cv2.arcLength(cnt, True)
+    cnt = contours[0]
 
-        rect = cv2.minAreaRect(cnt)
-        (_, _), (width, height), _ = rect
-        BL = max(width, height)
-        BW = min(width, height)
-        aspect_ratio = width / height if height > 0 else 0
+    # Perimeter
+    P = cv2.arcLength(cnt, True)
 
-        if len(cnt) >= 5:
-            ellipse = cv2.fitEllipse(cnt)
-            (_, axes, _) = ellipse
-            majoraxis = max(axes)
-            minoraxis = min(axes)
-            E = np.sqrt(1 - (minoraxis / majoraxis) ** 2)
-        else:
-            E = 0
+    # Minimum area rectangle
+    rect = cv2.minAreaRect(cnt)
+    (_, _), (width, height), _ = rect
+    BL = max(width, height)
+    BW = min(width, height)
+    aspect_ratio = width / height if height > 0 else 0
+    elongation = BL / BW if BW > 0 else 0
 
-        hull = cv2.convexHull(cnt)
-        A_hull = cv2.contourArea(hull)
-        solidity = A / A_hull if A_hull > 0 else 0
+    # Fit ellipse eccentricity
+    if len(cnt) >= 5:
+        ellipse = cv2.fitEllipse(cnt)
+        (_, axes, _) = ellipse
+        majoraxis = max(axes)
+        minoraxis = min(axes)
+        E = np.sqrt(1 - (minoraxis / majoraxis) ** 2)
+    else:
+        E = 0
 
-        x2, y2, w2, h2 = cv2.boundingRect(cnt)
-        rect_area = w2 * h2
-        extent = A / rect_area if rect_area > 0 else 0
+    # Convex hull
+    hull = cv2.convexHull(cnt)
+    A_hull = cv2.contourArea(hull)
+    solidity = A / A_hull if A_hull > 0 else 0
 
-        compactness = (P ** 2) / (4 * np.pi * A) if A > 0 else 0
-        circularity = (4 * np.pi * A) / (P ** 2) if P > 0 else 0
-        elongation = BL / BW if BW > 0 else 0
+    # Bounding rect features
+    x2, y2, w2, h2 = cv2.boundingRect(cnt)
+    rect_area = w2 * h2
+    extent = A / rect_area if rect_area > 0 else 0
+    rectangularity = rect_area / A if A > 0 else 0
 
-        hu = cv2.HuMoments(cv2.moments(cnt)).flatten()
+    # Compactness & circularity
+    compactness = (P ** 2) / (4 * np.pi * A) if A > 0 else 0
+    circularity = (4 * np.pi * A) / (P ** 2) if P > 0 else 0
 
-        return [
-            SR, A, P, BL, BW, E,
-            A_hull, solidity, extent,
-            compactness, circularity, elongation,
-            aspect_ratio,
-            *hu, contour_length
-        ]
+    # Equivalent diameter
+    equiv_diameter = np.sqrt(4 * A / np.pi) if A > 0 else 0
+
+    # Convexity (perimeter ratio)
+    P_hull = cv2.arcLength(hull, True)
+    convexity = P_hull / P if P > 0 else 0
+
+    # Centroid
+    M = cv2.moments(cnt)
+    cx = M['m10'] / M['m00'] if M['m00'] != 0 else 0
+    cy = M['m01'] / M['m00'] if M['m00'] != 0 else 0
+
+    # Extreme points
+    top = tuple(cnt[cnt[:,:,1].argmin()][0])
+    bottom = tuple(cnt[cnt[:,:,1].argmax()][0])
+    left = tuple(cnt[cnt[:,:,0].argmin()][0])
+    right = tuple(cnt[cnt[:,:,0].argmax()][0])
+    height_span = bottom[1] - top[1]
+    width_span = right[0] - left[0]
+
+    # Hu Moments
+    hu = cv2.HuMoments(cv2.moments(cnt)).flatten()
+
+    return [
+        SR, A, P, BL, BW, E,
+        A_hull, solidity, extent,
+        compactness, circularity, elongation,
+        aspect_ratio, equiv_diameter, convexity, rectangularity,
+        cx, cy, height_span, width_span,
+        *hu
+    ]
+
 
 
     img=load_image_from_streamlit(pig_img)
