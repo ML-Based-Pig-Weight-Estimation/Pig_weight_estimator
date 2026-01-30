@@ -18,9 +18,6 @@ st.set_page_config(
 
 
 )
-st.write("Current directory:", os.getcwd())
-st.write("Files here:", os.listdir())
-st.write("Model exists?", os.path.exists(MODEL_PATH))
 st.markdown(
     """
     <style>
